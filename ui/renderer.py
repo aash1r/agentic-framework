@@ -1,4 +1,5 @@
 from rich.console import Console
+from rich.theme import Theme
 
 AGENT_THEME = Theme(
     {
@@ -26,3 +27,22 @@ AGENT_THEME = Theme(
         "code": "white",
     }
 )
+
+
+_console: Console | None = None
+
+
+def get_console() -> Console:
+    global _console
+    if _console is None:
+        _console = Console(theme=AGENT_THEME, highlight=False)
+
+    return _console
+
+
+class Renderer:
+    def __init__(self, console: Console | None = None):
+        self.console = console or get_console()
+
+    def stream_assistant_delta(self, content: str) -> None:
+        self.console.print(content, end="", markup=False)
