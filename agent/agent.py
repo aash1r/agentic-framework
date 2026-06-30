@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import AsyncGenerator
 from agent.events import AgentEvent, AgentEventType
 from client.llm_client import LLMClient
@@ -13,7 +14,6 @@ class Agent:
 
         async for event in self._agentic_loop():
             yield event
-            print(event.type)
 
             if event.type == AgentEventType.TEXT_COMPLETE:
                 final_response = event.data.get("content")
@@ -26,7 +26,7 @@ class Agent:
 
         async for event in self.client.chat_completion(messages=messages, stream=True):
             if event.type == StreamEventType.TEXT_DELTA:
-                content = event.text_delta.content
+                content = event.text.content
                 response_text += content
                 yield AgentEvent.text_delta(content)
             if event.type == StreamEventType.ERROR:
@@ -36,3 +36,11 @@ class Agent:
 
         if response_text:
             yield AgentEvent.text_complete(response_text)
+
+    async def __aenter__(self) -> Agent:
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, tb):
+        if self.client:
+            await self.client.close()
+            self.client = None

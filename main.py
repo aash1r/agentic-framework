@@ -23,9 +23,14 @@ class CLI:
         if not self.agent:
             return None
 
+        assistant_streaming = False
+
         async for event in self.agent.run(message):
             if event.type == AgentEventType.TEXT_DELTA:
                 content = event.data.get("content", "")
+                if not assistant_streaming:
+                    self.renderer.begin_assistant()
+                    assistant_streaming = True
                 self.renderer.stream_assistant_delta(content=content)
 
 
