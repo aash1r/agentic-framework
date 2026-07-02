@@ -60,18 +60,22 @@ class LLMClient:
                 if attempt < self._max_retries:
                     wait_time = 2**attempt
                     await asyncio.sleep(wait_time)
-                else:
-                    yield StreamEvent(type="", error=f"Rate Limit Exceeded :{e}")
+                    continue
+                yield StreamEvent(
+                    type=StreamEventType.ERROR, error=f"Rate Limit Exceeded :{e}"
+                )
                 return
             except APIConnectionError as e:
                 if attempt < self._max_retries:
                     wait_time = 2**attempt
                     await asyncio.sleep(wait_time)
-                else:
-                    yield StreamEvent(type="", error=f"Connection Error :{e}")
+                    continue
+                yield StreamEvent(
+                    type=StreamEventType.ERROR, error=f"Connection Error :{e}"
+                )
                 return
             except APIError as e:
-                yield StreamEvent(type="", error=f"API Error :{e}")
+                yield StreamEvent(type=StreamEventType.ERROR, error=f"API Error :{e}")
                 return
 
     async def _stream_response(

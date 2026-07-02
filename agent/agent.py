@@ -12,7 +12,8 @@ class Agent:
     async def run(self, messages: str):
         yield AgentEvent.agent_start(message=messages)
 
-        async for event in self._agentic_loop():
+        final_response: str | None = None
+        async for event in self._agentic_loop(message=messages):
             yield event
 
             if event.type == AgentEventType.TEXT_COMPLETE:
@@ -20,8 +21,8 @@ class Agent:
 
         yield AgentEvent.agent_end(final_response)
 
-    async def _agentic_loop(self) -> AsyncGenerator[AgentEvent, None]:
-        messages = [{"role": "user", "content": "Hello, how are you?"}]
+    async def _agentic_loop(self, message) -> AsyncGenerator[AgentEvent, None]:
+        messages = [{"role": "user", "content": message}]
         response_text = ""
 
         async for event in self.client.chat_completion(messages=messages, stream=True):

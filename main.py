@@ -24,6 +24,7 @@ class CLI:
             return None
 
         assistant_streaming = False
+        final_response: str | None = None
 
         async for event in self.agent.run(message):
             if event.type == AgentEventType.TEXT_DELTA:
@@ -32,6 +33,15 @@ class CLI:
                     self.renderer.begin_assistant()
                     assistant_streaming = True
                 self.renderer.stream_assistant_delta(content=content)
+            elif event.type == AgentEventType.TEXT_COMPLETE:
+                final_response = event.data.get("content", "")
+                if assistant_streaming:
+                    self.renderer.end_assistant()
+                    assistant_streaming = False
+            elif event.type == AgentEventType.AGENT_ERROR:
+                error = event.data.get("error", "Unknow Error!")
+                console.print(f"\n[error]Error: {error}[/error]")
+        return final_response
 
 
 @click.command()
