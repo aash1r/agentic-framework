@@ -2,3 +2,4 @@ click
 openai
 dotenv
 rich
+tiktoken
