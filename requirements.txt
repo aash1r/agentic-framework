@@ -3,3 +3,4 @@ openai
 dotenv
 rich
 tiktoken
+pydantic
