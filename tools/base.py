@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Any
 from dataclasses import dataclass, field
 from pydantic import BaseModel, ValidationError
+from pydantic.json_schema import model_json_schema
 
 
 class ToolKind(str, Enum):
@@ -35,6 +36,14 @@ class ToolResult:
     error: str | None = None
     metadata: dict[str, Any] = field(default=dict)
 
+    @classmethod
+    def error_result(cls, error: str, output: str = "", **kwargs: Any):
+        return cls(success=False, output=output, error=error, **kwargs)
+
+    @classmethod
+    def success_result(cls, output: str = "", **kwargs: Any):
+        return cls(success=True, output=output, **kwargs)
+
 
 class Tool(ABC):
     name: str = "Base tool"
@@ -61,7 +70,7 @@ class Tool(ABC):
 
         return []
 
-    def is_mutating(self, params: dict[str, Any]) -> bool:
+    def is_mutating(self) -> bool:
         return self.kind in {
             ToolKind.WRITE,
             ToolKind.SHELL,
@@ -76,3 +85,34 @@ class Tool(ABC):
         return ToolConfirmation(
             tool_name=self.name, params=invocation.params, description=self.description
         )
+
+    def to_open_ai(self):
+        schema = self.schema
+        if isinstance(schema, type) and issubclass(schema, BaseModel):
+            json_schema = model_json_schema(schema, mode="serialization")
+            return {
+                "type": "function",
+                "function": {
+                    "name": self.name,
+                    "description": self.description,
+                    "parameters": {
+                        "type": "object",
+                        "properties": json_schema.get("properties", {}),
+                        "required": json_schema.get("required", []),
+                    },
+                },
+            }
+        if isinstance(schema, dict):
+            result = {
+                "name": self.name,
+                "description": self.description,
+            }
+
+            if "parameters" in schema:
+                result["parameters"] = schema["parameters"]
+            else:
+                result["parameters"] = schema
+
+            return result
+
+        raise ValueError(f"Invalid schema type for tool {self.name}: {type(schema)} ")

@@ -6,7 +6,13 @@ import asyncio
 import os
 from dotenv import load_dotenv
 
-from client.response import StreamEvent, StreamEventType, TextDelta, TokenUsage
+from client.response import (
+    StreamEvent,
+    StreamEventType,
+    TextDelta,
+    TokenUsage,
+    ToolCall,
+)
 
 # EventType,
 
@@ -34,14 +40,22 @@ class LLMClient:
             self._client = None
 
     async def chat_completion(
-        self, messages: list[dict[str, Any]], stream: bool = True
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        stream: bool = True,
     ) -> AsyncGenerator[StreamEvent, None]:
         client = self.get_client()
+
         kwargs = {
             "model": "cohere/north-mini-code:free",
             "messages": messages,
             "stream": stream,
         }
+
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
 
         for attempt in range(self._max_retries + 1):
             try:
@@ -85,6 +99,7 @@ class LLMClient:
 
         finish_reason: str | None = None
         usage: TokenUsage | None = None
+        in_progress: dict[int, ToolCall] = {}
 
         async for chunk in response:
             if hasattr(chunk, "usage") and chunk.usage:
@@ -106,13 +121,26 @@ class LLMClient:
 
             if delta.content:
                 yield StreamEvent(
-                    type=AgentEventType.TEXT_DELTA, text=TextDelta(delta.content)
+                    type=StreamEventType.TEXT_DELTA, text=TextDelta(delta.content)
                 )
+
+            if delta.tool_calls is not None:
+                for tc in delta.tool_calls:
+                    if tc.function.name is not None:
+                        idx = ToolCall(
+                            id=tc.id,
+                            name=tc.function.name,
+                            arguments=tc.function.arguments,
+                        )
+                        in_progress[tc.index] = idx
+                    else:
+                        in_progress[tc.index].arguments += tc.function.arguments
 
         yield StreamEvent(
             type=StreamEventType.MESSAGE_COMPLETE,
             finish_reason=finish_reason,
             usage=usage,
+            tool_calls=list(in_progress.values()),
         )
 
     async def _non_stream_response(

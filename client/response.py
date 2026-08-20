@@ -37,9 +37,17 @@ class TokenUsage:
 
 
 @dataclass
+class ToolCall:
+    id: str
+    name: str
+    arguments: str
+
+
+@dataclass
 class StreamEvent:
     type: StreamEventType
     text: TextDelta | None = None
     error: str | None = None
     finish_reason: str | None = None
     usage: TokenUsage | None = None
+    tool_calls: list[ToolCall] | None = None

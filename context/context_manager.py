@@ -9,12 +9,21 @@ class MessageItem:
     role: str
     content: str
     token_usage: int | None = None
+    tool_calls: list[dict[str, Any]] | None = None
+    tool_call_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {"role": self.role}
 
         if self.content:
             result["content"] = self.content
+
+        if self.tool_calls:
+            result["tool_calls"] = self.tool_calls
+
+        if self.tool_call_id:
+            result["tool_call_id"] = self.tool_call_id
+
         return result
 
 
@@ -27,16 +36,28 @@ class ContextManager:
     def add_user_message(self, content):
         item = MessageItem(
             role="user",
-            content=content,
-            token_usage=count_tokens(text=content, model=self._model_name),
+            content=content or "",
+            token_usage=count_tokens(text=content or "", model=self._model_name),
         )
         self._messages.append(item)
 
-    def add_assistant_message(self, content):
+    def add_assistant_message(
+        self, content, tool_calls: list[dict[str, Any]] | None = None
+    ):
         item = MessageItem(
             role="assistant",
+            content=content or "",
+            token_usage=count_tokens(text=content or "", model=self._model_name),
+            tool_calls=tool_calls,
+        )
+        self._messages.append(item)
+
+    def add_tool_message(self, tool_call_id, content):
+        item = MessageItem(
+            role="tool",
             content=content,
-            token_usage=count_tokens(text=content, model=self._model_name),
+            token_usage=count_tokens(text=content or "", model=self._model_name),
+            tool_call_id=tool_call_id,
         )
         self._messages.append(item)
 
