@@ -3,6 +3,7 @@ from typing import Any
 
 from tools.base import Tool, ToolInvocation, ToolResult
 from tools.builtin.read_file import ReadTool
+from tools.builtin.write_file import WriteFileTool
 
 
 class ToolRegistry:
@@ -42,7 +43,7 @@ class ToolRegistry:
     def get_schemas(self):
         return [tool.to_open_ai() for tool in self.get_tools()]
 
-    async def invoke(self, name: str, params: dict[str, Any], cwd: Path | None):
+    async def invoke(self, name: str, params: dict[str, Any], cwd: Path):
         tool = self.get(name=name)
         if tool is None:
             return ToolResult.error_result(
@@ -58,7 +59,7 @@ class ToolRegistry:
 
         invocation = ToolInvocation(params=params, cwd=cwd)
         try:
-            await tool.execute(invocation=invocation)
+            return await tool.execute(invocation=invocation)
         except Exception as e:
             return ToolResult.error_result(
                 error=f"Internal error: {str(e)}", metadata={"tool_name": name}
@@ -68,7 +69,7 @@ class ToolRegistry:
 def create_default_registry():
     registry = ToolRegistry()
 
-    BUILT_IN_TOOLS = [ReadTool()]
+    BUILT_IN_TOOLS = [ReadTool(), WriteFileTool()]
 
     for tool in BUILT_IN_TOOLS:
         registry.register(tool)

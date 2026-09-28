@@ -1,6 +1,5 @@
 from email import message
 from typing import Any, AsyncGenerator
-from agent.events import AgentEventType
 from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 import asyncio
 import os
@@ -153,6 +152,15 @@ class LLMClient:
         text_delta = None
         if message.content:
             text_delta = TextDelta(message.content)
+
+        tools_calls: list[ToolCall]
+        if message.tool_calls:
+            for tc in message.tool_calls:
+                tools_calls.append(
+                    ToolCall(
+                        id=tc.id, name=tc.function.name, arguments=tc.function.arguments
+                    )
+                )
 
         usage = None
         if response.usage:

@@ -1,24 +1,22 @@
 from __future__ import annotations
 from typing import AsyncGenerator
 from agent.events import AgentEvent, AgentEventType
-from client.llm_client import LLMClient
-from client.response import StreamEventType
-from context.context_manager import ContextManager
-from tools.registry import create_default_registry
+from client.response import StreamEventType, ToolCall
+import json
+from pathlib import Path
+from agent.session import Session
 
 
 class Agent:
     def __init__(self):
-        self.client = LLMClient()
-        self.context_manager = ContextManager()
-        self.tool_registry = create_default_registry()
+        self.session: Session | None = Session()
 
     async def run(self, messages: str):
         yield AgentEvent.agent_start(message=messages)
-        self.context_manager.add_user_message(messages)
+        self.session.context_manager.add_user_message(messages)
 
         final_response: str | None = None
-        async for event in self._agentic_loop(message=messages):
+        async for event in self._agentic_loop():
             yield event
 
             if event.type == AgentEventType.TEXT_COMPLETE:
@@ -26,37 +24,82 @@ class Agent:
 
         yield AgentEvent.agent_end(final_response)
 
-    async def _agentic_loop(self, message) -> AsyncGenerator[AgentEvent, None]:
-        # messages = [{"role": "user", "content": message}]
-        response_text = ""
+    async def _agentic_loop(self) -> AsyncGenerator[AgentEvent, None]:
+        max_turns = 100
 
-        tool_schemas = self.tool_registry.get_schemas()
+        for turns in range(max_turns):
+            response_text = ""
+            tool_schemas = self.session.tool_registry.get_schemas()
+            tool_calls: list[ToolCall] = []
 
-        async for event in self.client.chat_completion(
-            messages=self.context_manager.get_messages(),
-            tools=tool_schemas if tool_schemas else None,
-            stream=True,
-        ):
-            if event.type == StreamEventType.TEXT_DELTA:
-                content = event.text.content
-                response_text += content
-                yield AgentEvent.text_delta(content)
-            if event.type == StreamEventType.ERROR:
-                yield AgentEvent.agent_error(
-                    error=event.error or "Unknown error occured"
+            async for event in self.session.client.chat_completion(
+                messages=self.session.context_manager.get_messages(),
+                tools=tool_schemas if tool_schemas else None,
+                stream=True,
+            ):
+                # print(event)
+                if event.type == StreamEventType.TEXT_DELTA:
+                    content = event.text.content
+                    response_text += content
+                    yield AgentEvent.text_delta(content)
+
+                elif event.type == StreamEventType.MESSAGE_COMPLETE:
+                    if event.tool_calls:
+                        tool_calls.extend(event.tool_calls)
+                elif event.type == StreamEventType.ERROR:
+                    yield AgentEvent.agent_error(
+                        error=event.error or "Unknown error occured"
+                    )
+
+            self.session.context_manager.add_assistant_message(
+                response_text or None,
+                (
+                    [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.name,
+                                "arguments": str(tc.arguments),
+                            },
+                        }
+                        for tc in tool_calls
+                    ]
+                    if tool_calls
+                    else None
+                ),
+            )
+
+            if response_text:
+                yield AgentEvent.text_complete(response_text)
+
+            if not tool_calls:
+                return
+
+            for tc in tool_calls:
+                args = json.loads(tc.arguments)
+                yield AgentEvent.tool_call_start(
+                    call_id=tc.id, name=tc.name, arguments=args
                 )
 
-        self.context_manager.add_assistant_message(
-            response_text or None,
-        )
+                result = await self.session.tool_registry.invoke(
+                    name=tc.name, params=args, cwd=Path.cwd()
+                )
 
-        if response_text:
-            yield AgentEvent.text_complete(response_text)
+                yield AgentEvent.tool_call_complete(
+                    call_id=tc.id, name=tc.name, result=result
+                )
+
+                self.session.context_manager.add_tool_message(
+                    tool_call_id=tc.id,
+                    content=result.output
+                    or f"Error: {result.error}\n\nOutput:\n{result.output}",
+                )
 
     async def __aenter__(self) -> Agent:
         return self
 
     async def __aexit__(self, exc_type, exc_val, tb):
-        if self.client:
-            await self.client.close()
-            self.client = None
+        if self.session and self.session.client:
+            await self.session.client.close()
+            self.session = None

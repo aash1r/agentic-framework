@@ -72,9 +72,11 @@ class ReadTool(Tool):
                 formatted_lines.append(f"{i:6}|{line}")
 
             output = "\n".join(formatted_lines)
-            token_count = count_tokens(output)
+            token_count = count_tokens(output, "cohere/north-mini-code:free")
 
-            return ToolResult.success_result(output=output)
+            return ToolResult.success_result(
+                output=output, metadata={"usage": token_count}
+            )
 
         except Exception as e:
             return ToolResult.error_result(f"Failed to read file {e}")
